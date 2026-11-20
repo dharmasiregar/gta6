@@ -522,6 +522,7 @@ export function createWorld({ profile = null, onSave = () => {} } = {}) {
     get completedMissions() { return completedMissions; },
     get bustFine() { return bustFine; },
     get wanted() { return wanted; },
+    set wanted(value) { wanted = clamp(Math.floor(value), 0, 5); },
     get cash() { return cash; },
     get speed() { return player.carIndex < 0 ? 0 : cars[player.carIndex].speed; },
   };

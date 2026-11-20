@@ -2,6 +2,7 @@ import { createWorld } from './world.js';
 import { createInput } from './input.js';
 import { createRenderer } from './render.js';
 import { clearSave, readSave, writeSave } from './save.js';
+import { stageShot } from './shots.js';
 
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
@@ -11,6 +12,12 @@ let message = '';
 let messageTime = 0;
 let savedProfile = readSave();
 let mode = 'start';
+const query = new URLSearchParams(window.location.search);
+const shotScene = query.get('shot');
+const supportedShots = new Set(['chase', 'drive', 'mission', 'start']);
+const shotSeedValue = Number(query.get('seed') ?? 1);
+const shotSeed = Number.isFinite(shotSeedValue) ? Math.trunc(shotSeedValue) : 1;
+const shotMode = supportedShots.has(shotScene);
 let fine = 0;
 let last = performance.now();
 
@@ -35,11 +42,18 @@ function makeWorld(profile = null) {
 }
 
 let world = makeWorld();
+if (shotMode) mode = stageShot(shotScene, shotSeed, world);
 
-window.addEventListener('beforeunload', () => world.save());
+window.addEventListener('beforeunload', () => {
+  if (!shotMode) world.save();
+});
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (shotMode) {
+    renderer.draw(world, '', false, mode, Boolean(savedProfile), fine, 0);
+    return;
+  }
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
 

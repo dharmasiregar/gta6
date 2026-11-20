@@ -140,8 +140,8 @@ export function createRenderer(canvas) {
     context.restore();
   }
 
-  function drawMissionMarker(marker, label) {
-    const pulse = 1 + Math.sin(performance.now() / 170) * 0.18;
+  function drawMissionMarker(marker, label, time) {
+    const pulse = 1 + Math.sin(time / 170) * 0.18;
     context.save();
     context.shadowColor = '#f6df78';
     context.shadowBlur = 22;
@@ -278,7 +278,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function draw(world, message, nearCar, mode = 'playing', hasSave = false, fine = 0) {
+  function draw(world, message, nearCar, mode = 'playing', hasSave = false, fine = 0, time = performance.now()) {
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, width, height);
@@ -295,7 +295,7 @@ export function createRenderer(canvas) {
     const markerLabel = world.mission.phase === 'pickup'
       ? world.mission.type === 'passenger' ? 'PASSENGER' : 'PICKUP'
       : world.mission.type === 'passenger' ? 'DROP OFF' : 'DELIVER';
-    drawMissionMarker(missionMarker, markerLabel);
+    drawMissionMarker(missionMarker, markerLabel, time);
     for (const pedestrian of world.pedestrians) drawPedestrian(pedestrian);
     for (let index = 0; index < world.cars.length; index += 1) drawCar(world.cars[index], index, world.player.carIndex);
     for (const car of world.traffic) drawCar(car, -1, -2);

@@ -55,6 +55,35 @@ test('a nearby fast car makes pedestrians flee', () => {
   assert.ok(pedestrian.fleeTime > 0);
 });
 
+test('punching a pedestrian pays cash, starts a flee, and raises wanted', () => {
+  const world = createWorld();
+  const pedestrian = world.pedestrians[0];
+  world.player.x = pedestrian.x - 1;
+  world.player.y = pedestrian.y;
+  const cash = world.cash;
+
+  assert.match(world.step(0, { x: 0, y: 0 }, false, true), /punched/i);
+  assert.equal(world.cash, cash + 25);
+  assert.equal(world.wanted, 1);
+  assert.ok(pedestrian.fleeTime > 0);
+  assert.equal(pedestrian.robbed, true);
+});
+
+test('a stopped traffic car can be stolen and alerts nearby police', () => {
+  const world = createWorld();
+  const car = world.traffic[0];
+  car.speed = 0;
+  world.player.x = car.x;
+  world.player.y = car.y;
+  world.police.push({ x: car.x + 100, y: car.y, angle: 0, speed: 0, color: 0, siren: 0 });
+
+  assert.match(world.step(0, { x: 0, y: 0 }, true), /stolen near police/i);
+  assert.equal(world.player.carIndex, world.cars.length - 1);
+  assert.equal(world.traffic.includes(car), false);
+  assert.equal(world.wanted, 1);
+  assert.ok(world.pedestrians.at(-1).fleeTime > 0);
+});
+
 test('traffic slows for the player and delivery missions pay out', () => {
   const world = createWorld();
   const traffic = world.traffic[0];
@@ -79,6 +108,36 @@ test('traffic slows for the player and delivery missions pay out', () => {
   assert.equal(world.mission.phase, 'pickup');
 });
 
+test('passenger pickup pays a fare, counts completion, and autosaves', () => {
+  let saved;
+  const world = createWorld({ onSave: (progress) => { saved = progress; } });
+  const car = world.cars[0];
+  world.player.carIndex = 0;
+  world.player.x = car.x;
+  world.player.y = car.y;
+  world.mission.type = 'passenger';
+  world.mission.pickup = { x: car.x, y: car.y };
+  world.mission.destination = { x: car.x, y: car.y };
+
+  assert.match(world.step(0, { x: 0, y: 0 }, false), /passenger aboard/i);
+  assert.equal(world.mission.phase, 'destination');
+  const cash = world.cash;
+  assert.match(world.step(0, { x: 0, y: 0 }, false), /fare: \$350/i);
+  assert.equal(world.cash, cash + 350);
+  assert.equal(world.completedMissions, 1);
+  assert.equal(saved.completedMissions, 1);
+  assert.equal(saved.cash, world.cash);
+});
+
+test('a saved profile restores cash, position, and mission count', () => {
+  const world = createWorld({
+    profile: { cash: 875, x: 220, y: 310, completedMissions: 4 },
+  });
+  assert.equal(world.cash, 875);
+  assert.deepEqual({ x: world.player.x, y: world.player.y }, { x: 220, y: 310 });
+  assert.equal(world.completedMissions, 4);
+});
+
 test('wanted level decays after time out of trouble', () => {
   const world = createWorld();
   const car = world.cars[0];
@@ -95,7 +154,8 @@ test('wanted level decays after time out of trouble', () => {
 });
 
 test('police bust a pinned driver and apply a fine at the station', () => {
-  const world = createWorld();
+  let saved;
+  const world = createWorld({ onSave: (progress) => { saved = progress; } });
   const car = world.cars[0];
   world.player.x = car.x;
   world.player.y = car.y;
@@ -111,6 +171,8 @@ test('police bust a pinned driver and apply a fine at the station', () => {
   assert.deepEqual({ x: world.player.x, y: world.player.y }, world.station);
   assert.equal(world.cash, cash - 300);
   assert.equal(world.wanted, 0);
+  assert.equal(saved.cash, world.cash);
+  assert.deepEqual({ x: saved.x, y: saved.y }, world.station);
 });
 
 test('an expired delivery resets the mission to pickup', () => {

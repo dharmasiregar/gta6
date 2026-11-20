@@ -6,6 +6,15 @@ function roundedRect(context, x, y, width, height, radius) {
   context.fill();
 }
 
+function menuButtons(width, height, hasSave) {
+  const centerX = width / 2;
+  const startY = height / 2 + (hasSave ? 176 : 145);
+  return {
+    continue: hasSave ? { x: centerX - 115, y: startY - 55, width: 230, height: 44 } : null,
+    start: { x: centerX - 115, y: startY, width: 230, height: 44 },
+  };
+}
+
 export function createRenderer(canvas) {
   const context = canvas.getContext('2d');
   let width = 0;
@@ -188,7 +197,9 @@ export function createRenderer(canvas) {
     for (const building of world.buildings) {
       context.fillRect(x + building.x * scaleX, y + building.y * scaleY, building.width * scaleX, building.height * scaleY);
     }
-    const missionMarker = world.mission.phase === 'pickup' ? world.mission.pickup : world.mission.delivery;
+    const missionMarker = world.mission.phase === 'pickup'
+      ? world.mission.pickup
+      : world.mission.type === 'passenger' ? world.mission.destination : world.mission.delivery;
     context.fillStyle = '#ffe778';
     context.shadowColor = '#ffe778';
     context.shadowBlur = 8;
@@ -210,7 +221,64 @@ export function createRenderer(canvas) {
     context.strokeRect(x, y, mapWidth, mapHeight);
   }
 
-  function draw(world, message, nearCar) {
+  function drawButton(rect, label, highlighted = false) {
+    context.fillStyle = highlighted ? '#58d8d0' : 'rgba(255,255,255,0.12)';
+    roundedRect(context, rect.x, rect.y, rect.width, rect.height, 9);
+    context.fillStyle = highlighted ? '#102826' : PALETTE.text;
+    context.font = `700 16px ${FONT}`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(label, rect.x + rect.width / 2, rect.y + rect.height / 2);
+  }
+
+  function drawOverlay(mode, world, hasSave, fine) {
+    context.fillStyle = 'rgba(9, 15, 17, 0.82)';
+    context.fillRect(0, 0, width, height);
+    const panelWidth = Math.min(560, width - 32);
+    const panelHeight = mode === 'start' ? 510 : 340;
+    const panelX = (width - panelWidth) / 2;
+    const panelY = (height - panelHeight) / 2;
+    context.fillStyle = PALETTE.panel;
+    roundedRect(context, panelX, panelY, panelWidth, panelHeight, 18);
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+
+    if (mode === 'start') {
+      context.fillStyle = PALETTE.text;
+      context.font = `800 46px ${FONT}`;
+      context.fillText('Sidegrid', width / 2, panelY + 68);
+      context.fillStyle = '#f2d86c';
+      context.font = `600 17px ${FONT}`;
+      context.fillText('Every turn has a price. Every street has a story.', width / 2, panelY + 112);
+      context.fillStyle = PALETTE.muted;
+      context.font = `500 14px ${FONT}`;
+      context.fillText('WASD / Arrows  Move   ·   E  Enter / exit / steal', width / 2, panelY + 177);
+      context.fillText('W / S  Drive   ·   A / D  Steer   ·   F  Punch', width / 2, panelY + 207);
+      context.fillText('P  Pause   ·   Enter  Start', width / 2, panelY + 237);
+      const buttons = menuButtons(width, height, hasSave);
+      if (buttons.continue) drawButton(buttons.continue, 'Continue', true);
+      drawButton(buttons.start, 'Start', !hasSave);
+      context.fillStyle = PALETTE.muted;
+      context.font = `500 12px ${FONT}`;
+      context.fillText('A small city is waiting. Make your own route through it.', width / 2, panelY + panelHeight - 22);
+    } else {
+      context.fillStyle = mode === 'busted' ? '#f27770' : PALETTE.text;
+      context.font = `800 36px ${FONT}`;
+      context.fillText(mode === 'busted' ? 'BUSTED' : 'PAUSED', width / 2, panelY + 67);
+      context.fillStyle = PALETTE.text;
+      context.font = `600 18px ${FONT}`;
+      if (mode === 'busted') {
+        context.fillText(`Fine paid: $${fine}`, width / 2, panelY + 135);
+        context.fillText('Press Enter to get back on the street', width / 2, panelY + 205);
+      } else {
+        context.fillText('WASD / Arrows  Walk   ·   E  Enter / exit / steal', width / 2, panelY + 132);
+        context.fillText('W / S  Drive   ·   A / D  Steer   ·   F  Punch', width / 2, panelY + 166);
+        context.fillText('P  Resume', width / 2, panelY + 218);
+      }
+    }
+  }
+
+  function draw(world, message, nearCar, mode = 'playing', hasSave = false, fine = 0) {
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, width, height);
@@ -221,8 +289,13 @@ export function createRenderer(canvas) {
     context.translate(-cameraX, -cameraY);
     drawRoads();
     drawBuildings(world.buildings);
-    const missionMarker = world.mission.phase === 'pickup' ? world.mission.pickup : world.mission.delivery;
-    drawMissionMarker(missionMarker, world.mission.phase === 'pickup' ? 'PICKUP' : 'DELIVER');
+    const missionMarker = world.mission.phase === 'pickup'
+      ? world.mission.pickup
+      : world.mission.type === 'passenger' ? world.mission.destination : world.mission.delivery;
+    const markerLabel = world.mission.phase === 'pickup'
+      ? world.mission.type === 'passenger' ? 'PASSENGER' : 'PICKUP'
+      : world.mission.type === 'passenger' ? 'DROP OFF' : 'DELIVER';
+    drawMissionMarker(missionMarker, markerLabel);
     for (const pedestrian of world.pedestrians) drawPedestrian(pedestrian);
     for (let index = 0; index < world.cars.length; index += 1) drawCar(world.cars[index], index, world.player.carIndex);
     for (const car of world.traffic) drawCar(car, -1, -2);
@@ -233,7 +306,7 @@ export function createRenderer(canvas) {
     context.font = `600 16px ${FONT}`;
     context.textBaseline = 'middle';
     context.fillStyle = PALETTE.panel;
-    roundedRect(context, 18, 18, 300, 112, 10);
+    roundedRect(context, 18, 18, 300, 136, 10);
     context.fillStyle = PALETTE.text;
     context.textAlign = 'left';
     context.fillText(world.player.carIndex < 0 ? 'ON FOOT' : 'IN CAR', 32, 41);
@@ -245,6 +318,9 @@ export function createRenderer(canvas) {
     context.fillStyle = PALETTE.text;
     context.textAlign = 'right';
     context.fillText(`$${world.cash}`, 304, 41);
+    context.fillStyle = PALETTE.muted;
+    context.textAlign = 'left';
+    context.fillText(`MISSIONS  ${world.completedMissions}`, 32, 116);
     context.textAlign = 'left';
 
     context.font = `500 13px ${FONT}`;
@@ -252,14 +328,25 @@ export function createRenderer(canvas) {
     roundedRect(context, 18, height - 76, Math.min(width - 36, 560), 58, 7);
     context.fillStyle = PALETTE.muted;
     const missionText = world.mission.phase === 'pickup'
-      ? 'MISSION  Drive to the glowing pickup'
-      : `MISSION  Deliver package  ${Math.ceil(world.mission.timeLeft)}s`;
+      ? `MISSION  ${world.mission.type === 'passenger' ? 'Pick up passenger' : 'Drive to the glowing pickup'}`
+      : `MISSION  ${world.mission.type === 'passenger' ? 'Drop off passenger' : 'Deliver package'}  ${Math.ceil(world.mission.timeLeft)}s`;
     context.fillText(missionText, 30, height - 57);
-    context.fillText(message || (nearCar ? 'E  Get in car' : world.player.carIndex < 0 ? 'WASD / Arrows  Walk    E  Enter nearby car' : 'W/S  Drive    A/D  Steer    E  Get out'), 30, height - 35);
+    context.fillText(message || (nearCar ? 'E  Get in car' : world.player.carIndex < 0 ? 'WASD / Arrows  Walk    E  Enter car    F  Punch' : 'W/S  Drive    A/D  Steer    E  Get out'), 30, height - 35);
     drawMinimap(world);
+    if (mode !== 'playing') drawOverlay(mode, world, hasSave, fine);
+  }
+
+  function menuAction(x, y, hasSave) {
+    const buttons = menuButtons(width, height, hasSave);
+    if (buttons.continue
+      && x >= buttons.continue.x && x <= buttons.continue.x + buttons.continue.width
+      && y >= buttons.continue.y && y <= buttons.continue.y + buttons.continue.height) return 'continue';
+    if (x >= buttons.start.x && x <= buttons.start.x + buttons.start.width
+      && y >= buttons.start.y && y <= buttons.start.y + buttons.start.height) return 'start';
+    return '';
   }
 
   resize();
   window.addEventListener('resize', resize);
-  return { draw };
+  return { draw, menuAction };
 }

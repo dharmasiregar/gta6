@@ -118,7 +118,7 @@ function nearestRoadCenter(value) {
   return roadCenters.reduce((best, center) => Math.abs(center - value) < Math.abs(best - value) ? center : best);
 }
 
-export function createWorld() {
+export function createWorld({ profile = null, onSave = () => {} } = {}) {
   const buildings = makeBuildings();
   const cars = makeParkedCars();
   const traffic = makeTraffic();
@@ -127,16 +127,33 @@ export function createWorld() {
   const station = { x: CITY.roadWidth + 86, y: CITY.roadWidth + CITY.sidewalk / 2 };
   const player = { ...station, carIndex: -1 };
   const mission = {
+    type: 'delivery',
     phase: 'pickup',
     pickup: { x: roadCenters[CITY.blocks - 1], y: roadCenters[CITY.blocks - 1] },
     delivery: { x: roadCenters[0], y: roadCenters[CITY.blocks - 1] },
+    destination: { x: roadCenters[0], y: roadCenters[0] },
     timeLeft: 0,
     reward: 500,
   };
   let wanted = 0;
-  let cash = 1250;
+  let cash = profile?.cash ?? 1250;
+  let completedMissions = profile?.completedMissions ?? 0;
+  let bustFine = 0;
   let troubleTime = 0;
   let decayTime = 0;
+  if (profile && Number.isFinite(profile.x) && Number.isFinite(profile.y)) {
+    player.x = clamp(profile.x, PLAYER.radius, CITY.width - PLAYER.radius);
+    player.y = clamp(profile.y, PLAYER.radius, CITY.height - PLAYER.radius);
+  }
+
+  function persist() {
+    onSave({
+      cash,
+      x: player.x,
+      y: player.y,
+      completedMissions,
+    });
+  }
 
   function allVehicles() {
     return [...cars, ...traffic, ...police];
@@ -161,6 +178,20 @@ export function createWorld() {
     return result;
   }
 
+  function nearestSlowTraffic() {
+    let result = -1;
+    let nearest = 62;
+    for (let index = 0; index < traffic.length; index += 1) {
+      const car = traffic[index];
+      const candidate = distance(car, player);
+      if (Math.abs(car.speed) <= 45 && candidate < nearest) {
+        nearest = candidate;
+        result = index;
+      }
+    }
+    return result;
+  }
+
   function raiseWanted(amount) {
     wanted = Math.min(5, wanted + amount);
     troubleTime = 0;
@@ -169,6 +200,39 @@ export function createWorld() {
 
   function interact() {
     if (player.carIndex < 0) {
+      const trafficIndex = nearestSlowTraffic();
+      if (trafficIndex >= 0) {
+        const [car] = traffic.splice(trafficIndex, 1);
+        const fleeX = Math.sign(car.x - player.x) || 1;
+        const driver = {
+          x: car.x,
+          y: car.y,
+          route: [{ x: car.x, y: car.y }, { x: car.x + fleeX * 80, y: car.y + 80 }],
+          routeIndex: 0,
+          speed: 25,
+          fleeTime: 3.2,
+          fleeX,
+          fleeY: -1,
+          down: false,
+          robbed: true,
+          color: 2,
+        };
+        pedestrians.push(driver);
+        car.speed = 0;
+        car.angle = car.axis === 'x'
+          ? (car.direction > 0 ? 0 : Math.PI)
+          : (car.direction > 0 ? Math.PI / 2 : -Math.PI / 2);
+        car.axis = undefined;
+        player.carIndex = cars.push(car) - 1;
+        player.x = car.x;
+        player.y = car.y;
+        const policeNearby = police.some((patrol) => distance(patrol, player) < 220);
+        if (policeNearby) {
+          raiseWanted(1);
+          return 'Traffic car stolen near police. Wanted level increased.';
+        }
+        return 'Driver pulled out and fled. You took the traffic car.';
+      }
       const index = nearestCar();
       if (index >= 0) {
         player.carIndex = index;
@@ -195,6 +259,22 @@ export function createWorld() {
     car.speed = 0;
     player.carIndex = -1;
     return 'On foot. Walk with WASD or the arrow keys.';
+  }
+
+  function punch() {
+    if (player.carIndex >= 0) return '';
+    const target = pedestrians
+      .filter((pedestrian) => !pedestrian.down && !pedestrian.robbed && distance(pedestrian, player) < 34)
+      .sort((a, b) => distance(a, player) - distance(b, player))[0];
+    if (!target) return '';
+    const length = distance(target, player) || 1;
+    target.fleeX = (target.x - player.x) / length;
+    target.fleeY = (target.y - player.y) / length;
+    target.fleeTime = 3.5;
+    target.robbed = true;
+    cash += 25;
+    raiseWanted(1);
+    return 'Pedestrian punched. $25 taken; wanted level increased.';
   }
 
   function movePedestrians(dt) {
@@ -324,41 +404,61 @@ export function createWorld() {
         wanted = 0;
         troubleTime = 0;
         decayTime = 0;
-        cash = Math.max(0, cash - 300);
+        bustFine = 300;
+        cash = Math.max(0, cash - bustFine);
         police.length = 0;
+        mission.type = 'delivery';
         mission.phase = 'pickup';
         mission.timeLeft = 0;
-        return 'Busted. Respawned at the station; $300 fine.';
+        persist();
+        return `Busted. $${bustFine} fine.`;
       }
     }
     return '';
   }
 
   function updateMission(dt) {
-    if (mission.phase === 'delivery') {
+    if (mission.phase === 'delivery' || mission.phase === 'destination') {
       mission.timeLeft = Math.max(0, mission.timeLeft - dt);
       if (mission.timeLeft === 0) {
         mission.phase = 'pickup';
-        return 'Delivery expired. The package is back at the pickup.';
+        return mission.type === 'passenger'
+          ? 'Passenger trip expired. Find another fare.'
+          : 'Delivery expired. The package is back at the pickup.';
       }
     }
     if (player.carIndex < 0) return '';
-    const marker = mission.phase === 'pickup' ? mission.pickup : mission.delivery;
+    const marker = mission.phase === 'pickup'
+      ? mission.pickup
+      : mission.type === 'passenger' ? mission.destination : mission.delivery;
     if (distance(cars[player.carIndex], marker) > 72) return '';
     if (mission.phase === 'pickup') {
-      mission.phase = 'delivery';
-      mission.timeLeft = 75;
-      return 'Package collected. Deliver it before the timer runs out!';
+      mission.phase = mission.type === 'passenger' ? 'destination' : 'delivery';
+      mission.timeLeft = mission.type === 'passenger' ? 65 : 75;
+      return mission.type === 'passenger'
+        ? 'Passenger aboard. Reach the destination before time runs out!'
+        : 'Package collected. Deliver it before the timer runs out!';
     }
     mission.phase = 'pickup';
     mission.timeLeft = 0;
+    completedMissions += 1;
+    if (mission.type === 'passenger') {
+      const fare = 350;
+      cash += fare;
+      mission.type = 'delivery';
+      persist();
+      return `Passenger delivered. Fare: $${fare}.`;
+    }
     cash += mission.reward;
+    mission.type = 'passenger';
+    persist();
     return `Package delivered. Earned $${mission.reward}.`;
   }
 
-  function step(dt, direction, shouldInteract) {
+  function step(dt, direction, shouldInteract, shouldPunch = false) {
     let message = '';
     if (shouldInteract) message = interact();
+    if (shouldPunch) message = punch() || message;
     if (player.carIndex < 0) {
       const length = Math.hypot(direction.x, direction.y) || 1;
       const dx = direction.x / length * PLAYER.speed * dt;
@@ -417,6 +517,8 @@ export function createWorld() {
     station,
     step,
     nearestCar,
+    get completedMissions() { return completedMissions; },
+    get bustFine() { return bustFine; },
     get wanted() { return wanted; },
     get cash() { return cash; },
     get speed() { return player.carIndex < 0 ? 0 : cars[player.carIndex].speed; },

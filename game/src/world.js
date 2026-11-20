@@ -1,124 +1,137 @@
-// The game's rules and state, with no drawing and no browser in it: the player's paddle, the
-// pool of falling blocks and coins, spawning, collisions, score, lives and level. step() advances
-// one fixed step and returns what happened as bit flags, so the caller can react without the
-// world knowing about screens or sound. Nothing here allocates after createWorld returns.
-import { BLOCK, COIN, FIELD, LEVEL, LIVES, PLAYER, POOL_SIZE } from './config.js';
+import { CAR, CITY, PLAYER } from './config.js';
 
-export const KIND_BLOCK = 0;
-export const KIND_COIN = 1;
-
-export const EVENT_HIT = 1;
-export const EVENT_COIN = 2;
-export const EVENT_OVER = 4;
-
-function overlaps(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+function circleHitsRect(x, y, radius, rect) {
+  const nearestX = Math.max(rect.x, Math.min(x, rect.x + rect.width));
+  const nearestY = Math.max(rect.y, Math.min(y, rect.y + rect.height));
+  const dx = x - nearestX;
+  const dy = y - nearestY;
+  return dx * dx + dy * dy < radius * radius;
 }
 
-export function createWorld(random) {
-  const player = { x: 0, y: FIELD.groundY - PLAYER.height, width: PLAYER.width, height: PLAYER.height, invulnerable: 0 };
-  const items = [];
-  for (let index = 0; index < POOL_SIZE; index += 1) {
-    items.push({ active: false, kind: KIND_BLOCK, x: 0, y: 0, width: 0, height: 0, speed: 0 });
-  }
-  const state = { player, items, score: 0, lives: LIVES, level: 1, elapsed: 0, blockTimer: 0, coinTimer: 0 };
-
-  function reset() {
-    player.x = (FIELD.width - player.width) / 2;
-    player.invulnerable = 0;
-    for (const item of items) item.active = false;
-    state.score = 0;
-    state.lives = LIVES;
-    state.level = 1;
-    state.elapsed = 0;
-    state.blockTimer = BLOCK.interval;
-    state.coinTimer = COIN.interval;
-  }
-
-  function freeItem() {
-    for (let index = 0; index < items.length; index += 1) if (!items[index].active) return items[index];
-    return null;
-  }
-
-  function spawnBlock() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_BLOCK;
-    item.width = BLOCK.minWidth + random() * (BLOCK.maxWidth - BLOCK.minWidth);
-    item.height = BLOCK.height;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = BLOCK.speed + BLOCK.speedPerLevel * (state.level - 1) + random() * BLOCK.speedJitter;
-  }
-
-  function spawnCoin() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_COIN;
-    item.width = COIN.size;
-    item.height = COIN.size;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = COIN.speed + COIN.speedPerLevel * (state.level - 1);
-  }
-
-  function blockInterval() {
-    return Math.max(BLOCK.minInterval, BLOCK.interval * BLOCK.intervalScale ** (state.level - 1));
-  }
-
-  /**
-   * One fixed step. `direction` is -1, 0 or 1 (left, still, right). With `harmless` set (the title
-   * screen's backdrop) things fall but nothing touches the player and nothing scores.
-   */
-  function step(dt, direction, harmless) {
-    let events = 0;
-    state.elapsed += dt;
-    state.level = Math.min(LEVEL.max, 1 + Math.floor(state.elapsed / LEVEL.seconds));
-
-    player.x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * dt));
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
-
-    state.blockTimer -= dt;
-    if (state.blockTimer <= 0) {
-      spawnBlock();
-      state.blockTimer += blockInterval();
-    }
-    state.coinTimer -= dt;
-    if (state.coinTimer <= 0) {
-      spawnCoin();
-      state.coinTimer += COIN.interval + random() * COIN.intervalJitter;
-    }
-
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      item.y += item.speed * dt;
-      if (item.y > FIELD.groundY) {
-        item.active = false;
-        if (item.kind === KIND_BLOCK && !harmless) state.score += BLOCK.dodgePoints;
-        continue;
-      }
-      if (harmless || !overlaps(item, player)) continue;
-      if (item.kind === KIND_COIN) {
-        item.active = false;
-        state.score += COIN.points;
-        events |= EVENT_COIN;
-      } else if (player.invulnerable === 0) {
-        item.active = false;
-        state.lives -= 1;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        if (state.lives === 0) {
-          events |= EVENT_OVER;
-          break;
-        }
+function makeBuildings() {
+  const buildings = [];
+  for (let row = 0; row < CITY.blocks; row += 1) {
+    for (let column = 0; column < CITY.blocks; column += 1) {
+      const left = column * CITY.pitch + CITY.roadWidth + CITY.sidewalk + 12;
+      const top = row * CITY.pitch + CITY.roadWidth + CITY.sidewalk + 12;
+      const width = CITY.blockSize - CITY.sidewalk * 2 - 24;
+      const height = CITY.blockSize - CITY.sidewalk * 2 - 24;
+      const gapX = 34;
+      const gapY = 38;
+      const parts = [
+        { x: left, y: top, width: (width - gapX) / 2, height: (height - gapY) / 2 },
+        { x: left + (width + gapX) / 2, y: top, width: (width - gapX) / 2, height: (height - gapY) / 2 },
+        { x: left, y: top + (height + gapY) / 2, width: (width - gapX) / 2, height: (height - gapY) / 2 },
+        { x: left + (width + gapX) / 2, y: top + (height + gapY) / 2, width: (width - gapX) / 2, height: (height - gapY) / 2 },
+      ];
+      for (let index = 0; index < parts.length; index += 1) {
+        buildings.push({ ...parts[index], color: (row * 3 + column + index) % 5 });
       }
     }
-    return events;
+  }
+  return buildings;
+}
+
+function makeCars() {
+  const cars = [];
+  const add = (x, y, angle, color) => cars.push({ x, y, angle, color, speed: 0 });
+  for (let segment = 0; segment < CITY.blocks; segment += 1) {
+    const start = segment * CITY.pitch;
+    for (const offset of [235, 420]) {
+      const coordinate = start + offset;
+      add(coordinate, start + 35, 0, (segment + offset) % 6);
+      add(coordinate + 80, start + CITY.roadWidth - 35, Math.PI, (segment + offset + 2) % 6);
+      add(start + 35, coordinate, Math.PI / 2, (segment + offset + 1) % 6);
+      add(start + CITY.roadWidth - 35, coordinate + 80, -Math.PI / 2, (segment + offset + 3) % 6);
+    }
+  }
+  return cars;
+}
+
+export function createWorld() {
+  const buildings = makeBuildings();
+  const cars = makeCars();
+  const player = { x: CITY.roadWidth + 86, y: CITY.roadWidth + CITY.sidewalk / 2, carIndex: -1 };
+
+  function blocked(x, y, radius, ignoredCar = -1) {
+    if (x < radius || y < radius || x > CITY.width - radius || y > CITY.height - radius) return true;
+    if (buildings.some((building) => circleHitsRect(x, y, radius, building))) return true;
+    return cars.some((car, index) => index !== ignoredCar && Math.hypot(car.x - x, car.y - y) < radius + 15);
   }
 
-  reset();
-  return { state, reset, step };
+  function nearestCar() {
+    let result = -1;
+    let distance = 78;
+    for (let index = 0; index < cars.length; index += 1) {
+      const car = cars[index];
+      const candidate = Math.hypot(car.x - player.x, car.y - player.y);
+      if (candidate < distance) {
+        distance = candidate;
+        result = index;
+      }
+    }
+    return result;
+  }
+
+  function interact() {
+    if (player.carIndex < 0) {
+      const index = nearestCar();
+      if (index >= 0) {
+        player.carIndex = index;
+        return 'In vehicle. Drive with W/S and steer with A/D. Press E to get out.';
+      }
+      return 'Walk close to a parked car to get in.';
+    }
+
+    const car = cars[player.carIndex];
+    const sideX = Math.sin(car.angle) * (CAR.height / 2 + PLAYER.radius + 3);
+    const sideY = -Math.cos(car.angle) * (CAR.height / 2 + PLAYER.radius + 3);
+    const exits = [
+      { x: car.x + sideX, y: car.y + sideY },
+      { x: car.x - sideX, y: car.y - sideY },
+    ];
+    const exit = exits.find((point) => !blocked(point.x, point.y, PLAYER.radius, player.carIndex));
+    if (!exit) return 'No room to get out here.';
+    player.x = exit.x;
+    player.y = exit.y;
+    car.speed = 0;
+    player.carIndex = -1;
+    return 'On foot. Walk with WASD or the arrow keys.';
+  }
+
+  function step(dt, direction, shouldInteract) {
+    let message = '';
+    if (shouldInteract) message = interact();
+    if (player.carIndex < 0) {
+      const length = Math.hypot(direction.x, direction.y) || 1;
+      const dx = direction.x / length * PLAYER.speed * dt;
+      const dy = direction.y / length * PLAYER.speed * dt;
+      if (!blocked(player.x + dx, player.y, PLAYER.radius)) player.x += dx;
+      if (!blocked(player.x, player.y + dy, PLAYER.radius)) player.y += dy;
+    } else {
+      const index = player.carIndex;
+      const car = cars[index];
+      const throttle = direction.y < 0 ? 1 : direction.y > 0 ? -1 : 0;
+      if (throttle > 0) car.speed = Math.min(CAR.maxSpeed, car.speed + CAR.acceleration * dt);
+      else if (throttle < 0) car.speed = Math.max(-CAR.maxReverse, car.speed - CAR.reverseAcceleration * dt);
+      else if (car.speed > 0) car.speed = Math.max(0, car.speed - CAR.friction * dt);
+      else if (car.speed < 0) car.speed = Math.min(0, car.speed + CAR.friction * dt);
+
+      const steeringScale = Math.min(1, Math.abs(car.speed) / 45);
+      car.angle += direction.x * CAR.steering * steeringScale * dt * (car.speed < 0 ? -1 : 1);
+      const nextX = car.x + Math.cos(car.angle) * car.speed * dt;
+      const nextY = car.y + Math.sin(car.angle) * car.speed * dt;
+      if (!blocked(nextX, nextY, 24, index)) {
+        car.x = nextX;
+        car.y = nextY;
+      } else {
+        car.speed = 0;
+      }
+      player.x = car.x;
+      player.y = car.y;
+    }
+    return message;
+  }
+
+  return { player, buildings, cars, step, nearestCar, get speed() { return player.carIndex < 0 ? 0 : cars[player.carIndex].speed; } };
 }

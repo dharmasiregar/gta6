@@ -55,8 +55,9 @@ test('a nearby fast car makes pedestrians flee', () => {
   assert.ok(pedestrian.fleeTime > 0);
 });
 
-test('punching a pedestrian pays cash, starts a flee, and raises wanted', () => {
-  const world = createWorld();
+test('punch cash changes are saved with the current progress', () => {
+  let saved;
+  const world = createWorld({ onSave: (progress) => { saved = progress; } });
   const pedestrian = world.pedestrians[0];
   world.player.x = pedestrian.x - 1;
   world.player.y = pedestrian.y;
@@ -67,6 +68,12 @@ test('punching a pedestrian pays cash, starts a flee, and raises wanted', () => 
   assert.equal(world.wanted, 1);
   assert.ok(pedestrian.fleeTime > 0);
   assert.equal(pedestrian.robbed, true);
+  assert.deepEqual(saved, {
+    cash: cash + 25,
+    x: world.player.x,
+    y: world.player.y,
+    completedMissions: world.completedMissions,
+  });
 });
 
 test('a stopped traffic car can be stolen and alerts nearby police', () => {

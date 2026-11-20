@@ -274,6 +274,7 @@ export function createWorld({ profile = null, onSave = () => {} } = {}) {
     target.robbed = true;
     cash += 25;
     raiseWanted(1);
+    persist();
     return 'Pedestrian punched. $25 taken; wanted level increased.';
   }
 
@@ -517,6 +518,7 @@ export function createWorld({ profile = null, onSave = () => {} } = {}) {
     station,
     step,
     nearestCar,
+    save: persist,
     get completedMissions() { return completedMissions; },
     get bustFine() { return bustFine; },
     get wanted() { return wanted; },

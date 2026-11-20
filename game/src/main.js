@@ -36,6 +36,8 @@ function makeWorld(profile = null) {
 
 let world = makeWorld();
 
+window.addEventListener('beforeunload', () => world.save());
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.05);
@@ -72,6 +74,7 @@ function frame(now) {
     input.takePunch();
     if (pausePressed) mode = 'playing';
   } else if (pausePressed) {
+    world.save();
     mode = 'paused';
     input.takeInteract();
     input.takePunch();

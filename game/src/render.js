@@ -103,6 +103,56 @@ export function createRenderer(canvas) {
     context.restore();
   }
 
+  function drawPedestrian(pedestrian) {
+    if (pedestrian.down) {
+      context.fillStyle = '#37332e';
+      context.beginPath();
+      context.ellipse(pedestrian.x, pedestrian.y, 10, 5, 0, 0, Math.PI * 2);
+      context.fill();
+      return;
+    }
+    context.fillStyle = ['#e7a65b', '#a8c77e', '#d08075', '#9db9d2', '#d4c5a5'][pedestrian.color];
+    context.beginPath();
+    context.arc(pedestrian.x, pedestrian.y, 6, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#f1d2aa';
+    context.beginPath();
+    context.arc(pedestrian.x + 1, pedestrian.y - 5, 3, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function drawPolice(patrol) {
+    drawCar({ ...patrol, color: 5 }, -1, -2);
+    context.save();
+    context.translate(patrol.x, patrol.y);
+    context.rotate(patrol.angle);
+    context.fillStyle = Math.floor(patrol.siren * 8) % 2 ? '#f05252' : '#58c8ec';
+    context.fillRect(-3, -CAR.height / 2 - 1, 7, 3);
+    context.restore();
+  }
+
+  function drawMissionMarker(marker, label) {
+    const pulse = 1 + Math.sin(performance.now() / 170) * 0.18;
+    context.save();
+    context.shadowColor = '#f6df78';
+    context.shadowBlur = 22;
+    context.fillStyle = 'rgba(246, 223, 120, 0.28)';
+    context.beginPath();
+    context.arc(marker.x, marker.y, 21 * pulse, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+    context.strokeStyle = '#ffef9c';
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(marker.x, marker.y, 12 * pulse, 0, Math.PI * 2);
+    context.stroke();
+    context.fillStyle = '#fff2a4';
+    context.font = `700 12px ${FONT}`;
+    context.textAlign = 'center';
+    context.fillText(label, marker.x, marker.y - 26);
+    context.restore();
+  }
+
   function drawPlayer(player) {
     context.fillStyle = '#102826';
     context.beginPath();
@@ -138,6 +188,18 @@ export function createRenderer(canvas) {
     for (const building of world.buildings) {
       context.fillRect(x + building.x * scaleX, y + building.y * scaleY, building.width * scaleX, building.height * scaleY);
     }
+    const missionMarker = world.mission.phase === 'pickup' ? world.mission.pickup : world.mission.delivery;
+    context.fillStyle = '#ffe778';
+    context.shadowColor = '#ffe778';
+    context.shadowBlur = 8;
+    context.beginPath();
+    context.arc(x + missionMarker.x * scaleX, y + missionMarker.y * scaleY, 4, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+    context.fillStyle = '#70bce5';
+    for (const patrol of world.police) {
+      context.fillRect(x + patrol.x * scaleX - 2, y + patrol.y * scaleY - 2, 4, 4);
+    }
     const marker = world.player;
     context.fillStyle = PALETTE.player;
     context.beginPath();
@@ -159,26 +221,41 @@ export function createRenderer(canvas) {
     context.translate(-cameraX, -cameraY);
     drawRoads();
     drawBuildings(world.buildings);
+    const missionMarker = world.mission.phase === 'pickup' ? world.mission.pickup : world.mission.delivery;
+    drawMissionMarker(missionMarker, world.mission.phase === 'pickup' ? 'PICKUP' : 'DELIVER');
+    for (const pedestrian of world.pedestrians) drawPedestrian(pedestrian);
     for (let index = 0; index < world.cars.length; index += 1) drawCar(world.cars[index], index, world.player.carIndex);
+    for (const car of world.traffic) drawCar(car, -1, -2);
+    for (const patrol of world.police) drawPolice(patrol);
     if (world.player.carIndex < 0) drawPlayer(world.player);
     context.restore();
 
     context.font = `600 16px ${FONT}`;
     context.textBaseline = 'middle';
     context.fillStyle = PALETTE.panel;
-    roundedRect(context, 18, 18, 274, 72, 10);
+    roundedRect(context, 18, 18, 300, 112, 10);
     context.fillStyle = PALETTE.text;
     context.textAlign = 'left';
     context.fillText(world.player.carIndex < 0 ? 'ON FOOT' : 'IN CAR', 32, 41);
     context.fillStyle = PALETTE.muted;
     const speed = Math.round(Math.abs(world.speed) * 0.36);
     context.fillText(`SPEED  ${speed} km/h`, 32, 67);
+    context.fillStyle = '#f2d86c';
+    context.fillText(`WANTED  ${'★'.repeat(world.wanted)}${'☆'.repeat(5 - world.wanted)}`, 32, 91);
+    context.fillStyle = PALETTE.text;
+    context.textAlign = 'right';
+    context.fillText(`$${world.cash}`, 304, 41);
+    context.textAlign = 'left';
 
     context.font = `500 13px ${FONT}`;
     context.fillStyle = PALETTE.panel;
-    roundedRect(context, 18, height - 50, Math.min(width - 36, 490), 32, 7);
+    roundedRect(context, 18, height - 76, Math.min(width - 36, 560), 58, 7);
     context.fillStyle = PALETTE.muted;
-    context.fillText(message || (nearCar ? 'E  Get in car' : world.player.carIndex < 0 ? 'WASD / Arrows  Walk    E  Enter nearby car' : 'W/S  Drive    A/D  Steer    E  Get out'), 30, height - 34);
+    const missionText = world.mission.phase === 'pickup'
+      ? 'MISSION  Drive to the glowing pickup'
+      : `MISSION  Deliver package  ${Math.ceil(world.mission.timeLeft)}s`;
+    context.fillText(missionText, 30, height - 57);
+    context.fillText(message || (nearCar ? 'E  Get in car' : world.player.carIndex < 0 ? 'WASD / Arrows  Walk    E  Enter nearby car' : 'W/S  Drive    A/D  Steer    E  Get out'), 30, height - 35);
     drawMinimap(world);
   }
 

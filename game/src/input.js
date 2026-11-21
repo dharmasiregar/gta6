@@ -1,46 +1,31 @@
-const AXES = {
-  x: { negative: ['ArrowLeft', 'KeyA'], positive: ['ArrowRight', 'KeyD'] },
-  y: { negative: ['ArrowUp', 'KeyW'], positive: ['ArrowDown', 'KeyS'] },
-};
-const ACTIONS = ['KeyE', 'KeyF', 'KeyP', 'Enter'];
+const KEYS = new Set(["w", "a", "s", "d", "arrowup", "arrowleft", "arrowdown", "arrowright", "e", "f", "p", "escape"]);
 
 export function createInput(target = window) {
   const held = new Set();
-  const tapped = new Set();
-  let pointer = null;
-
-  target.addEventListener('keydown', (event) => {
-    if (Object.values(AXES).some(({ negative, positive }) =>
-      negative.includes(event.code) || positive.includes(event.code)) || ACTIONS.includes(event.code)) {
-      event.preventDefault();
-    }
-    if (!event.repeat && ACTIONS.includes(event.code)) tapped.add(event.code);
-    held.add(event.code);
-  });
-  target.addEventListener('keyup', (event) => held.delete(event.code));
-  target.addEventListener('blur', () => held.clear());
-  target.addEventListener('pointerdown', (event) => { pointer = { x: event.clientX, y: event.clientY }; });
-
-  function take(code) {
-    const pressed = tapped.has(code);
-    tapped.delete(code);
-    return pressed;
-  }
-  function axis(name) {
-    const { negative, positive } = AXES[name];
-    return Number(positive.some((key) => held.has(key))) - Number(negative.some((key) => held.has(key)));
-  }
-
+  const pressed = new Set();
+  const down = (event) => {
+    const key = event.key.toLowerCase();
+    if (!KEYS.has(key)) return;
+    event.preventDefault();
+    if (!held.has(key)) pressed.add(key);
+    held.add(key);
+  };
+  const up = (event) => held.delete(event.key.toLowerCase());
+  target.addEventListener("keydown", down);
+  target.addEventListener("keyup", up);
   return {
-    direction: () => ({ x: axis('x'), y: axis('y') }),
-    takeInteract: () => take('KeyE'),
-    takePunch: () => take('KeyF'),
-    takePause: () => take('KeyP'),
-    takeStart: () => take('Enter'),
-    takeClick() {
-      const lastPointer = pointer;
-      pointer = null;
-      return lastPointer;
+    held,
+    isDown(...keys) { return keys.some((key) => held.has(key)); },
+    consume(...keys) {
+      const key = keys.find((candidate) => pressed.has(candidate));
+      if (!key) return false;
+      pressed.delete(key);
+      return true;
+    },
+    clearPressed() { pressed.clear(); },
+    destroy() {
+      target.removeEventListener("keydown", down);
+      target.removeEventListener("keyup", up);
     },
   };
 }

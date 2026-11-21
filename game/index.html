@@ -1,16 +1,47 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sidegrid</title>
-<style>
-  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111916">
+  <title>Sidegrid</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="game" aria-label="Sidegrid: explore a city on foot and drive parked cars"></canvas>
-<script type="module" src="./src/main.js"></script>
+  <main id="game-shell">
+    <canvas id="game" aria-label="Sidegrid city game"></canvas>
+    <section id="start-screen" class="screen">
+      <div class="card">
+        <p class="eyebrow">A CITY THAT NEVER SITS STILL</p>
+        <h1>SIDEGRID</h1>
+        <p class="intro">Find a ride. Make a delivery. Keep moving.</p>
+        <div class="start-actions">
+          <button id="start-button">Start</button>
+          <button id="continue-button" class="secondary">Continue</button>
+        </div>
+        <p class="key-hint">WASD / arrows to move · E enter · F punch · P pause</p>
+      </div>
+    </section>
+    <section id="pause-screen" class="screen hidden">
+      <div class="card compact"><p class="eyebrow">TAKE A BREATHER</p><h2>PAUSED</h2><p>Press P or Escape to get back out there.</p></div>
+    </section>
+    <section id="busted-screen" class="screen hidden">
+      <div class="card compact"><p class="eyebrow">THE CITY CAUGHT UP</p><h2>BUSTED</h2><p id="fine-copy"></p><button id="busted-button">Back to the street</button></div>
+    </section>
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="brand">SIDEGRID <span>METRO COUNTY</span></div>
+        <div class="cash" id="cash">$0</div>
+      </div>
+      <div class="status">
+        <span id="wanted" aria-label="Wanted level">☆☆☆☆☆</span>
+        <span id="speed">0 MPH</span>
+      </div>
+      <div id="mission-label">NO JOB ACTIVE</div>
+      <div id="hint">WASD / arrows move · E interact · F punch · P pause</div>
+      <canvas id="minimap" width="160" height="120" aria-label="Minimap"></canvas>
+    </div>
+  </main>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

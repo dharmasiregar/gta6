@@ -1,120 +1,116 @@
-import { createInput } from './input.js';
-import { createRenderer } from './render.js';
-import { clearSave, readSave, writeSave } from './save.js';
-import { stageShot } from './shots.js';
-import { createWorld } from './world.js';
+import { CONFIG } from "./config.js";
+import { createInput } from "./input.js";
+import { createShotWorld, createWorld, stepWorld } from "./world.js";
+import { loadSave, restoreProgress, saveIfCashChanged, saveProgress } from "./save.js";
+import { render } from "./render.js";
 
-const canvas = document.querySelector('#game');
-if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The game canvas is missing.');
-
-const renderer = createRenderer(canvas);
+const canvas = document.querySelector("#game");
+const ctx = canvas.getContext("2d");
 const input = createInput();
-const messageLifetime = 2.2;
-const shotScene = new URLSearchParams(location.search).get('shot');
-const validShots = new Set(['chase', 'drive', 'mission', 'start']);
-const shotMode = validShots.has(shotScene);
-const seedValue = Number(new URLSearchParams(location.search).get('seed') ?? 1);
-const shotSeed = Number.isFinite(seedValue) ? Math.trunc(seedValue) : 1;
-let savedProfile = readSave();
-let mode = 'start';
-let message = '';
-let messageTime = 0;
-let fine = 0;
-let previousFrame = performance.now();
+const startScreen = document.querySelector("#start-screen");
+const pauseScreen = document.querySelector("#pause-screen");
+const bustedScreen = document.querySelector("#busted-screen");
+const hud = document.querySelector("#hud");
+const bustedCopy = document.querySelector("#fine-copy");
+const ui = {
+  cash: document.querySelector("#cash"),
+  wanted: document.querySelector("#wanted"),
+  speed: document.querySelector("#speed"),
+  mission: document.querySelector("#mission-label"),
+  hint: document.querySelector("#hint"),
+  minimap: document.querySelector("#minimap"),
+};
 
-function showSaveError(error) {
-  console.error('Unable to save Sidegrid progress:', error);
-  message = 'Progress could not be saved in this browser.';
-  messageTime = messageLifetime;
+canvas.width = CONFIG.width;
+canvas.height = CONFIG.height;
+const params = new URLSearchParams(location.search);
+const shot = params.get("shot");
+const seed = Number(params.get("seed")) || 1;
+const shotMode = ["chase", "drive", "mission", "start"].includes(shot);
+let world = shotMode ? createShotWorld(shot, seed) : createWorld(seed);
+let paused = false;
+let lastFrame = 0;
+const stored = loadSave();
+if (!shotMode) restoreProgress(world, stored);
+
+function showGame() {
+  startScreen.classList.add("hidden");
+  pauseScreen.classList.add("hidden");
+  bustedScreen.classList.add("hidden");
+  hud.classList.remove("hidden");
 }
 
-function newWorld(profile = null) {
-  return createWorld({
-    profile,
-    onSave(progress) {
-      try {
-        writeSave(progress);
-        savedProfile = progress;
-      } catch (error) {
-        showSaveError(error);
-      }
-    },
-  });
+function startNew() {
+  world = createWorld(Date.now());
+  world._savedCash = world.cash;
+  showGame();
 }
 
-let world = newWorld();
-if (shotMode) mode = stageShot(shotScene, shotSeed, world);
+function continueGame() {
+  world = createWorld(Date.now());
+  restoreProgress(world, loadSave());
+  showGame();
+}
 
-window.addEventListener('beforeunload', () => {
-  if (!shotMode) world.save();
+function togglePause() {
+  if (world.status !== "playing" || startScreen.classList.contains("hidden") === false) return;
+  paused = !paused;
+  pauseScreen.classList.toggle("hidden", !paused);
+  if (paused) saveProgress(world);
+}
+
+document.querySelector("#start-button").addEventListener("click", startNew);
+document.querySelector("#continue-button").addEventListener("click", continueGame);
+document.querySelector("#busted-button").addEventListener("click", () => {
+  world.status = "playing";
+  world.wanted = 0;
+  world.police = [];
+  world.player.health = 100;
+  world.cash = Math.max(0, world.cash);
+  world._savedCash = world.cash;
+  world.player.x = Math.min(world.width - 30, world.player.x + 115);
+  showGame();
+  saveProgress(world);
+});
+window.addEventListener("beforeunload", () => {
+  if (!shotMode) saveProgress(world);
 });
 
-function tick(now) {
-  requestAnimationFrame(tick);
-  if (shotMode) {
-    renderer.draw(world, '', false, mode, Boolean(savedProfile), fine, 0);
-    return;
-  }
-
-  const dt = Math.min((now - previousFrame) / 1000, 0.05);
-  previousFrame = now;
-  const startPressed = input.takeStart();
-  const pausePressed = input.takePause();
-  const click = input.takeClick();
-
-  if (mode === 'start') {
-    input.takeInteract();
-    input.takePunch();
-    const action = click ? renderer.menuAction(click.x, click.y, Boolean(savedProfile)) : '';
-    if (action === 'continue') {
-      world = newWorld(savedProfile);
-      mode = 'playing';
-      message = 'Progress restored.';
-      messageTime = messageLifetime;
-    } else if (action === 'start' || startPressed) {
-      try {
-        clearSave();
-        savedProfile = null;
-      } catch (error) {
-        showSaveError(error);
-      }
-      world = newWorld();
-      mode = 'playing';
-    }
-  } else if (mode === 'busted') {
-    input.takeInteract();
-    input.takePunch();
-    if (startPressed) mode = 'playing';
-  } else if (mode === 'paused') {
-    input.takeInteract();
-    input.takePunch();
-    if (pausePressed) mode = 'playing';
-  } else if (pausePressed) {
-    world.save();
-    mode = 'paused';
-    input.takeInteract();
-    input.takePunch();
-  } else {
-    const response = world.step(dt, input.direction(), input.takeInteract(), input.takePunch());
-    if (response) {
-      message = response;
-      messageTime = messageLifetime;
-      if (response.startsWith('Busted.')) {
-        fine = world.bustFine;
-        mode = 'busted';
-      }
-    }
-    messageTime = Math.max(0, messageTime - dt);
-  }
-
-  renderer.draw(
-    world,
-    messageTime > 0 ? message : '',
-    world.player.carIndex < 0 && world.nearestCar() >= 0,
-    mode,
-    Boolean(savedProfile),
-    fine,
-  );
+if (shotMode) {
+  hud.classList.toggle("hidden", shot === "start");
+  startScreen.classList.toggle("hidden", shot !== "start");
+  world._savedCash = world.cash;
+} else {
+  hud.classList.add("hidden");
+  startScreen.classList.remove("hidden");
 }
 
-requestAnimationFrame(tick);
+function frame(timestamp) {
+  const dt = lastFrame ? (timestamp - lastFrame) / 1000 : 0;
+  lastFrame = timestamp;
+  if (!shotMode && input.consume("p", "escape")) togglePause();
+  if (!shotMode && !paused && world.status === "playing" && startScreen.classList.contains("hidden")) {
+    stepWorld(world, input, dt);
+    saveIfCashChanged(world);
+  }
+  if (world.status === "busted") {
+    paused = false;
+    pauseScreen.classList.add("hidden");
+    hud.classList.add("hidden");
+    bustedCopy.textContent = "You paid a $100 fine. Catch your breath, then head back out.";
+    bustedScreen.classList.remove("hidden");
+  } else if (world.status === "playing" && shot !== "start") {
+    render(ctx, world, ui);
+  } else {
+    ctx.fillStyle = "#18241d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 13; i += 1) {
+      ctx.fillStyle = i % 2 ? "#28372d" : "#334237";
+      ctx.fillRect(i * 112 - 50, 0, 54, canvas.height);
+    }
+    ctx.fillStyle = "#b9ad69";
+    ctx.fillRect(0, 430, canvas.width, 12);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);

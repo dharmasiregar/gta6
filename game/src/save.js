@@ -1,38 +1,51 @@
-export const SAVE_KEY = 'sidegrid-save-v1';
+const DEFAULT_SAVE = Object.freeze({ cash: 250, x: 168, y: 168, missionsDone: 0 });
 
-function validProgress(record) {
-  return record
-    && Number.isFinite(record.cash) && record.cash >= 0
-    && Number.isFinite(record.x) && Number.isFinite(record.y)
-    && Number.isInteger(record.completedMissions) && record.completedMissions >= 0;
-}
-
-export function readSave(storage = globalThis.localStorage) {
-  if (!storage) return null;
-  const encoded = storage.getItem(SAVE_KEY);
-  if (encoded === null) return null;
-  let record;
+export function loadSave(storage = globalThis.localStorage, key = "sidegrid-save-v1") {
   try {
-    record = JSON.parse(encoded);
+    const raw = storage?.getItem(key);
+    if (!raw) return { ...DEFAULT_SAVE };
+    const data = JSON.parse(raw);
+    return {
+      cash: finiteNonnegative(data.cash, DEFAULT_SAVE.cash),
+      x: finiteNonnegative(data.x, DEFAULT_SAVE.x),
+      y: finiteNonnegative(data.y, DEFAULT_SAVE.y),
+      missionsDone: Math.floor(finiteNonnegative(data.missionsDone, 0)),
+    };
   } catch (error) {
-    if (error instanceof SyntaxError) return null;
-    throw error;
+    return { ...DEFAULT_SAVE };
   }
-  if (!validProgress(record)) return null;
-  return {
-    cash: Math.floor(record.cash),
-    x: record.x,
-    y: record.y,
-    completedMissions: record.completedMissions,
+}
+
+function finiteNonnegative(value, fallback) {
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+export function saveProgress(world, storage = globalThis.localStorage, key = "sidegrid-save-v1") {
+  if (!storage) return false;
+  const payload = {
+    cash: world.cash,
+    x: world.player.x,
+    y: world.player.y,
+    missionsDone: world.missionsDone,
   };
+  try {
+    storage.setItem(key, JSON.stringify(payload));
+    world._savedCash = world.cash;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
-export function writeSave(progress, storage = globalThis.localStorage) {
-  if (!storage) throw new Error('Local storage is unavailable.');
-  storage.setItem(SAVE_KEY, JSON.stringify(progress));
+export function saveIfCashChanged(world, storage = globalThis.localStorage, key = "sidegrid-save-v1") {
+  return world._savedCash !== world.cash ? saveProgress(world, storage, key) : false;
 }
 
-export function clearSave(storage = globalThis.localStorage) {
-  if (!storage) throw new Error('Local storage is unavailable.');
-  storage.removeItem(SAVE_KEY);
+export function restoreProgress(world, save) {
+  world.cash = save.cash;
+  world.player.x = Math.min(save.x, world.width - 12);
+  world.player.y = Math.min(save.y, world.height - 12);
+  world.missionsDone = save.missionsDone;
+  world._savedCash = save.cash;
+  return world;
 }

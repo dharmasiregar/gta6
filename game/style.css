@@ -1,0 +1,36 @@
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101714; color: #f5f2e8; font-family: "Trebuchet MS", Arial, sans-serif; }
+body { display: grid; place-items: center; }
+#game-shell { position: relative; width: min(100vw, 1280px); height: min(100vh, 720px); overflow: hidden; background: #17211b; box-shadow: 0 18px 70px #0009; }
+#game { display: block; width: 100%; height: 100%; }
+.screen { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(90deg, #09100dd9, #09100d78 55%, #09100d2e); }
+.hidden { display: none !important; }
+.card { width: min(480px, calc(100% - 36px)); padding: 38px 42px; border: 1px solid #d5c88755; background: #111915eF; box-shadow: 0 18px 56px #0008; }
+.card.compact { text-align: center; }
+.eyebrow { color: #d7c66e; letter-spacing: .2em; font-size: 11px; font-weight: bold; }
+h1 { margin: 14px 0 4px; font-size: clamp(52px, 8vw, 86px); letter-spacing: .08em; line-height: .96; }
+h2 { margin: 14px 0; font-size: 48px; letter-spacing: .1em; }
+.intro { color: #c5cdc5; font-size: 17px; }
+.start-actions { display: flex; gap: 12px; margin: 28px 0 20px; }
+button { cursor: pointer; border: 0; padding: 13px 25px; color: #111915; background: #e2cb61; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: .1em; }
+button:hover { background: #f2df7d; }
+button.secondary { color: #ece9dc; background: #34443b; }
+.key-hint, .card p { color: #aab5aa; font-size: 13px; line-height: 1.6; }
+#hud { position: absolute; inset: 0; pointer-events: none; text-shadow: 0 2px 6px #000; }
+.hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 22px 26px; }
+.brand { color: #e6d476; font-size: 17px; font-weight: bold; letter-spacing: .16em; }
+.brand span { display: block; margin-top: 4px; color: #d7ddd4; font-size: 9px; letter-spacing: .24em; }
+.cash { padding: 9px 13px; color: #f3edc6; background: #101914c9; font-size: 20px; font-weight: bold; }
+.status { position: absolute; left: 26px; top: 78px; display: flex; gap: 15px; align-items: center; font-size: 19px; font-weight: bold; }
+#wanted { color: #f0c84b; letter-spacing: 3px; }
+#speed { color: #f5f2e8; font-size: 13px; }
+#mission-label { position: absolute; left: 26px; top: 115px; padding: 8px 11px; color: #f1e7a5; background: #111915bb; font-size: 12px; letter-spacing: .04em; }
+#hint { position: absolute; left: 26px; bottom: 20px; padding: 8px 10px; color: #e2e8de; background: #101914bb; font-size: 11px; }
+#minimap { position: absolute; right: 24px; bottom: 20px; width: 160px; height: 120px; border: 1px solid #d7d1a499; background: #101914d9; }
+@media (max-width: 650px) {
+  .card { padding: 28px 25px; }
+  #minimap { width: 120px; height: 90px; }
+  .hud-top { padding: 15px; }
+  .status, #mission-label { left: 15px; }
+  #hint { max-width: calc(100% - 150px); left: 15px; font-size: 9px; }
+}

@@ -1,33 +1,34 @@
-import { createWorld } from './world.js';
 import { createInput } from './input.js';
 import { createRenderer } from './render.js';
 import { clearSave, readSave, writeSave } from './save.js';
 import { stageShot } from './shots.js';
+import { createWorld } from './world.js';
 
-const canvas = document.getElementById('game');
+const canvas = document.querySelector('#game');
+if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The game canvas is missing.');
+
 const renderer = createRenderer(canvas);
 const input = createInput();
-const MESSAGE_DURATION = 2.2;
-let message = '';
-let messageTime = 0;
+const messageLifetime = 2.2;
+const shotScene = new URLSearchParams(location.search).get('shot');
+const validShots = new Set(['chase', 'drive', 'mission', 'start']);
+const shotMode = validShots.has(shotScene);
+const seedValue = Number(new URLSearchParams(location.search).get('seed') ?? 1);
+const shotSeed = Number.isFinite(seedValue) ? Math.trunc(seedValue) : 1;
 let savedProfile = readSave();
 let mode = 'start';
-const query = new URLSearchParams(window.location.search);
-const shotScene = query.get('shot');
-const supportedShots = new Set(['chase', 'drive', 'mission', 'start']);
-const shotSeedValue = Number(query.get('seed') ?? 1);
-const shotSeed = Number.isFinite(shotSeedValue) ? Math.trunc(shotSeedValue) : 1;
-const shotMode = supportedShots.has(shotScene);
+let message = '';
+let messageTime = 0;
 let fine = 0;
-let last = performance.now();
+let previousFrame = performance.now();
 
-function reportSaveError(error) {
+function showSaveError(error) {
   console.error('Unable to save Sidegrid progress:', error);
   message = 'Progress could not be saved in this browser.';
-  messageTime = MESSAGE_DURATION;
+  messageTime = messageLifetime;
 }
 
-function makeWorld(profile = null) {
+function newWorld(profile = null) {
   return createWorld({
     profile,
     onSave(progress) {
@@ -35,48 +36,49 @@ function makeWorld(profile = null) {
         writeSave(progress);
         savedProfile = progress;
       } catch (error) {
-        reportSaveError(error);
+        showSaveError(error);
       }
     },
   });
 }
 
-let world = makeWorld();
+let world = newWorld();
 if (shotMode) mode = stageShot(shotScene, shotSeed, world);
 
 window.addEventListener('beforeunload', () => {
   if (!shotMode) world.save();
 });
 
-function frame(now) {
-  requestAnimationFrame(frame);
+function tick(now) {
+  requestAnimationFrame(tick);
   if (shotMode) {
     renderer.draw(world, '', false, mode, Boolean(savedProfile), fine, 0);
     return;
   }
-  const dt = Math.min((now - last) / 1000, 0.05);
-  last = now;
 
+  const dt = Math.min((now - previousFrame) / 1000, 0.05);
+  previousFrame = now;
   const startPressed = input.takeStart();
   const pausePressed = input.takePause();
   const click = input.takeClick();
+
   if (mode === 'start') {
     input.takeInteract();
     input.takePunch();
     const action = click ? renderer.menuAction(click.x, click.y, Boolean(savedProfile)) : '';
     if (action === 'continue') {
-      world = makeWorld(savedProfile);
+      world = newWorld(savedProfile);
       mode = 'playing';
       message = 'Progress restored.';
-      messageTime = MESSAGE_DURATION;
+      messageTime = messageLifetime;
     } else if (action === 'start' || startPressed) {
       try {
         clearSave();
         savedProfile = null;
       } catch (error) {
-        reportSaveError(error);
+        showSaveError(error);
       }
-      world = makeWorld();
+      world = newWorld();
       mode = 'playing';
     }
   } else if (mode === 'busted') {
@@ -93,17 +95,18 @@ function frame(now) {
     input.takeInteract();
     input.takePunch();
   } else {
-    const interaction = world.step(dt, input.direction(), input.takeInteract(), input.takePunch());
-    if (interaction) {
-      message = interaction;
-      messageTime = MESSAGE_DURATION;
-      if (interaction.startsWith('Busted.')) {
+    const response = world.step(dt, input.direction(), input.takeInteract(), input.takePunch());
+    if (response) {
+      message = response;
+      messageTime = messageLifetime;
+      if (response.startsWith('Busted.')) {
         fine = world.bustFine;
         mode = 'busted';
       }
     }
     messageTime = Math.max(0, messageTime - dt);
   }
+
   renderer.draw(
     world,
     messageTime > 0 ? message : '',
@@ -114,4 +117,4 @@ function frame(now) {
   );
 }
 
-requestAnimationFrame(frame);
+requestAnimationFrame(tick);

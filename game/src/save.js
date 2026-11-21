@@ -1,21 +1,30 @@
 export const SAVE_KEY = 'sidegrid-save-v1';
 
+function validProgress(record) {
+  return record
+    && Number.isFinite(record.cash) && record.cash >= 0
+    && Number.isFinite(record.x) && Number.isFinite(record.y)
+    && Number.isInteger(record.completedMissions) && record.completedMissions >= 0;
+}
+
 export function readSave(storage = globalThis.localStorage) {
   if (!storage) return null;
+  const encoded = storage.getItem(SAVE_KEY);
+  if (encoded === null) return null;
+  let record;
   try {
-    const value = JSON.parse(storage.getItem(SAVE_KEY));
-    if (!value || !Number.isFinite(value.cash) || value.cash < 0 || !Number.isFinite(value.x) || !Number.isFinite(value.y)
-      || !Number.isInteger(value.completedMissions) || value.completedMissions < 0) return null;
-    return {
-      cash: Math.max(0, Math.floor(value.cash)),
-      x: value.x,
-      y: value.y,
-      completedMissions: value.completedMissions,
-    };
+    record = JSON.parse(encoded);
   } catch (error) {
     if (error instanceof SyntaxError) return null;
     throw error;
   }
+  if (!validProgress(record)) return null;
+  return {
+    cash: Math.floor(record.cash),
+    x: record.x,
+    y: record.y,
+    completedMissions: record.completedMissions,
+  };
 }
 
 export function writeSave(progress, storage = globalThis.localStorage) {

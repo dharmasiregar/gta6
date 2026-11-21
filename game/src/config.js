@@ -8,11 +8,7 @@ export const CITY = {
   get height() { return this.blocks * this.pitch; },
 };
 
-export const PLAYER = {
-  radius: 11,
-  speed: 190,
-};
-
+export const PLAYER = { radius: 11, speed: 190 };
 export const CAR = {
   width: 44,
   height: 24,

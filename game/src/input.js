@@ -1,66 +1,46 @@
-const KEYS = {
-  left: new Set(['ArrowLeft', 'KeyA']),
-  right: new Set(['ArrowRight', 'KeyD']),
-  up: new Set(['ArrowUp', 'KeyW']),
-  down: new Set(['ArrowDown', 'KeyS']),
+const AXES = {
+  x: { negative: ['ArrowLeft', 'KeyA'], positive: ['ArrowRight', 'KeyD'] },
+  y: { negative: ['ArrowUp', 'KeyW'], positive: ['ArrowDown', 'KeyS'] },
 };
+const ACTIONS = ['KeyE', 'KeyF', 'KeyP', 'Enter'];
 
-export function createInput() {
+export function createInput(target = window) {
   const held = new Set();
-  let interact = false;
-  let punch = false;
-  let start = false;
-  let pause = false;
-  let click = null;
+  const tapped = new Set();
+  let pointer = null;
 
-  window.addEventListener('keydown', (event) => {
-    if (Object.values(KEYS).some((keys) => keys.has(event.code))
-      || ['KeyE', 'KeyF', 'KeyP', 'Enter'].includes(event.code)) {
+  target.addEventListener('keydown', (event) => {
+    if (Object.values(AXES).some(({ negative, positive }) =>
+      negative.includes(event.code) || positive.includes(event.code)) || ACTIONS.includes(event.code)) {
       event.preventDefault();
     }
-    if (event.code === 'KeyE' && !event.repeat) interact = true;
-    if (event.code === 'KeyF' && !event.repeat) punch = true;
-    if (event.code === 'KeyP' && !event.repeat) pause = true;
-    if (event.code === 'Enter' && !event.repeat) start = true;
+    if (!event.repeat && ACTIONS.includes(event.code)) tapped.add(event.code);
     held.add(event.code);
   });
-  window.addEventListener('keyup', (event) => held.delete(event.code));
-  window.addEventListener('blur', () => held.clear());
-  window.addEventListener('pointerdown', (event) => {
-    click = { x: event.clientX, y: event.clientY };
-  });
+  target.addEventListener('keyup', (event) => held.delete(event.code));
+  target.addEventListener('blur', () => held.clear());
+  target.addEventListener('pointerdown', (event) => { pointer = { x: event.clientX, y: event.clientY }; });
+
+  function take(code) {
+    const pressed = tapped.has(code);
+    tapped.delete(code);
+    return pressed;
+  }
+  function axis(name) {
+    const { negative, positive } = AXES[name];
+    return Number(positive.some((key) => held.has(key))) - Number(negative.some((key) => held.has(key)));
+  }
 
   return {
-    direction() {
-      return {
-        x: Number([...KEYS.right].some((key) => held.has(key))) - Number([...KEYS.left].some((key) => held.has(key))),
-        y: Number([...KEYS.down].some((key) => held.has(key))) - Number([...KEYS.up].some((key) => held.has(key))),
-      };
-    },
-    takeInteract() {
-      const pressed = interact;
-      interact = false;
-      return pressed;
-    },
-    takePunch() {
-      const pressed = punch;
-      punch = false;
-      return pressed;
-    },
-    takeStart() {
-      const pressed = start;
-      start = false;
-      return pressed;
-    },
-    takePause() {
-      const pressed = pause;
-      pause = false;
-      return pressed;
-    },
+    direction: () => ({ x: axis('x'), y: axis('y') }),
+    takeInteract: () => take('KeyE'),
+    takePunch: () => take('KeyF'),
+    takePause: () => take('KeyP'),
+    takeStart: () => take('Enter'),
     takeClick() {
-      const position = click;
-      click = null;
-      return position;
+      const lastPointer = pointer;
+      pointer = null;
+      return lastPointer;
     },
   };
 }
